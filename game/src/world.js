@@ -1,10 +1,10 @@
 // The game state: the thief, the guards, detection, objectives and scoring.
 // One fixed-step update per call; the renderer only ever reads `state`.
-import { FIELD, TILE, STEP, PLAYER, GUARD, DETECTION, SCORE } from './config.js';
+import { FIELD, TILE, STEP, PLAYER, GUARD, DETECTION, SCORE, PEBBLE } from './config.js';
 import { LEVELS, TILE_INTEL, TILE_EXIT, TILE_PLANT, TILE_SHADOW, tileBlocksMovement, tileHides } from './levels.js';
-import { createGuard, updateGuard, GUARD_CHASE } from './guards.js';
+import { createGuard, updateGuard, GUARD_CHASE, GUARD_PATROL, GUARD_SUSPICIOUS, GUARD_INVESTIGATE, GUARD_RETURN } from './guards.js';
 import { tileAtPixel, hasLineOfSight, angleTo, angleDifference } from './vision.js';
-import { playFootstep, playPickup, playAlert, playCaught, playWin } from './audio.js';
+import { playFootstep, playPickup, playAlert, playCaught, playWin, playPebble } from './audio.js';
 
 export const EVENT_NONE = 0;
 export const EVENT_PICKUP = 1;
@@ -56,6 +56,10 @@ function freshState(levelIndex) {
     // step carries. Visual only; the rules never read this list.
     rings: [],
     everAlerted: false,
+    // Pebble lure: 3 per wing. `pebble` is the live marker {x, y, t,
+    // investigator} or null; the renderer draws it, a guard walks to it.
+    pebbles: PEBBLE.perWing,
+    pebble: null,
     intelCollected: 0,
     score: 0,
     levelTime: 0,
@@ -136,6 +140,75 @@ export function sightingStrength(state, guard) {
   return DETECTION.baseRate * distanceFactor * movementFactor * coverFactor;
 }
 
+/**
+ * Throw a pebble: Q tosses one in the facing direction, right-click tosses
+ * one toward the mouse. It lands on the last open spot along the throw
+ * (never inside a wall), and the nearest guard in earshot walks over to
+ * look — "?" state, then back to patrol — while the thief slips past.
+ * Returns false when there is nothing to throw or nowhere to throw it.
+ */
+export function throwPebble(world, target) {
+  const state = world.state;
+  if (!state || state.won || state.caught) return false;
+  if (state.pebbles <= 0) {
+    state.message = 'Out of pebbles — this wing has no more to throw.';
+    state.messageTimer = 2;
+    return false;
+  }
+  const p = state.player;
+  let angle;
+  let range;
+  if (target) {
+    const dx = target.x - p.x;
+    const dy = target.y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 12) return false;
+    angle = Math.atan2(dy, dx);
+    range = Math.min(dist, PEBBLE.throwRange);
+  } else {
+    angle = p.facing;
+    range = PEBBLE.throwRange;
+  }
+  // Walk the throw ray until the pebble would hit a wall; land on the last
+  // open spot, at least a step away from the thief.
+  let land = { x: p.x + Math.cos(angle) * 24, y: p.y + Math.sin(angle) * 24 };
+  for (let d = 24; d <= range; d += 8) {
+    const nx = p.x + Math.cos(angle) * d;
+    const ny = p.y + Math.sin(angle) * d;
+    if (!circleFits(state.grid, nx, ny, 6)) break;
+    land = { x: nx, y: ny };
+  }
+  state.pebbles -= 1;
+  state.pebble = { x: land.x, y: land.y, t: state.totalTime, investigator: null };
+  playPebble();
+  let best = null;
+  let bestD = Infinity;
+  for (const guard of state.guards) {
+    if (guard.state === GUARD_CHASE) continue;
+    const d = Math.hypot(guard.x - land.x, guard.y - land.y);
+    if (d < PEBBLE.hearRadius && d < bestD) {
+      bestD = d;
+      best = guard;
+    }
+  }
+  if (best) {
+    best.state = GUARD_INVESTIGATE;
+    best.pebbleTarget = { x: land.x, y: land.y };
+    best.investigateTimer = PEBBLE.investigateSeconds;
+    best.suspicion = Math.max(best.suspicion, 30);
+    best.lastSeen = { x: land.x, y: land.y };
+    best.routeTarget = null;
+    best.route = [];
+    state.pebble.investigator = best.id;
+    state.message = `${best.name} heard something…`;
+    state.messageTimer = 3;
+  } else {
+    state.message = 'The pebble skitters across the marble — no guard heard it.';
+    state.messageTimer = 3;
+  }
+  return true;
+}
+
 /** Step the whole world one fixed step. `input` is {dir, sneaking, click}. */
 export function stepWorld(world, input, dt) {
   const state = world.state;
@@ -189,17 +262,42 @@ export function stepWorld(world, input, dt) {
       anySeen = true;
       strongest = Math.max(strongest, strength);
     }
+    const prevState = guard.state;
     const raised = updateGuard(state.grid, guard, state.level.guards[guard.id], strength > 0 ? { x: p.x, y: p.y, strength } : null, dt);
     if (raised === 'alarm' && !state.alarm) {
       state.alarm = true;
       state.alarmTimer = 0;
       state.everAlerted = true;
+      state.message = `${guard.name} raised the alarm!`;
+      state.messageTimer = 3;
       playAlert();
       events |= EVENT_ALARM;
+    } else if (raised === 'pebbleDone' && state.pebble && state.pebble.investigator === guard.id) {
+      state.pebble = null;
+    }
+    // Named toast the moment a guard first glimpses the thief — the
+    // suspicion state is only entered from patrol, so this fires once.
+    if (prevState === GUARD_PATROL && guard.state === GUARD_SUSPICIOUS) {
+      state.message = `${guard.name} glimpsed something!`;
+      state.messageTimer = 3;
     }
   }
   if (anySeen) state.detection = Math.min(100, state.detection + strongest * dt);
   else state.detection = Math.max(0, state.detection - DETECTION.decayPerSecond * dt);
+
+  // --- a stale pebble marker fades; its guard gives up and returns. ---
+  if (state.pebble && state.totalTime - state.pebble.t > PEBBLE.markerLifetimeSeconds) {
+    const inv = state.pebble.investigator;
+    if (inv != null) {
+      const g = state.guards[inv];
+      if (g && g.state === GUARD_INVESTIGATE) {
+        g.state = GUARD_RETURN;
+        g.pebbleTarget = null;
+        g.routeTarget = null;
+      }
+    }
+    state.pebble = null;
+  }
 
   // --- alarm fades when the thief stays unseen; guards then search. ---
   if (state.alarm) {

@@ -57,7 +57,7 @@ function buildLevel(def) {
     spawn: def.spawn,
     exit: def.exit,
     intel,
-    guards: def.guards.map((g) => ({ path: g.path, speed: g.speed ?? 1, pause: g.pause ?? 1.6 })),
+    guards: def.guards.map((g) => ({ path: g.path, speed: g.speed ?? 1, pause: g.pause ?? 1.6, name: g.name })),
   };
 }
 
@@ -80,8 +80,8 @@ export const LEVELS = [
       [2, 2, 4, 2, TILE_SHADOW], [22, 16, 5, 2, TILE_SHADOW], [13, 10, 3, 2, TILE_SHADOW],
     ],
     guards: [
-      { path: [[6, 5], [15, 5], [15, 15], [6, 16]], speed: 1 },
-      { path: [[24, 4], [24, 16], [17, 16], [17, 4]], speed: 1 },
+      { path: [[6, 5], [15, 5], [15, 15], [6, 16]], speed: 1, name: 'Warden Rook' },
+      { path: [[24, 4], [24, 16], [17, 16], [17, 4]], speed: 1, name: 'Watcher Odile' },
     ],
   }),
   buildLevel({
@@ -112,9 +112,9 @@ export const LEVELS = [
       [2, 10, 4, 2, TILE_SHADOW], [26, 10, 4, 2, TILE_SHADOW], [13, 16, 4, 2, TILE_SHADOW],
     ],
     guards: [
-      { path: [[4, 3], [13, 3], [13, 17], [4, 17]], speed: 1.05 },
-      { path: [[28, 3], [19, 3], [19, 17], [28, 17]], speed: 1.05 },
-      { path: [[16, 7], [16, 12], [12, 12], [12, 7]], speed: 1.15 },
+      { path: [[4, 3], [13, 3], [13, 17], [4, 17]], speed: 1.05, name: 'Warden Kess' },
+      { path: [[28, 3], [19, 3], [19, 17], [28, 17]], speed: 1.05, name: 'Watcher Tarn' },
+      { path: [[16, 7], [16, 12], [12, 12], [12, 7]], speed: 1.15, name: 'Keeper Lova' },
     ],
   }),
   buildLevel({
@@ -148,10 +148,10 @@ export const LEVELS = [
       [17, 12, 3, 2, TILE_SHADOW], [5, 2, 2, 2, TILE_SHADOW], [25, 2, 2, 2, TILE_SHADOW],
     ],
     guards: [
-      { path: [[3, 4], [3, 15], [6, 10]], speed: 1.2 },
-      { path: [[28, 4], [28, 15], [26, 10]], speed: 1.2 },
-      { path: [[12, 4], [11, 15], [14, 8]], speed: 1.25 },
-      { path: [[19, 4], [19, 15], [21, 9]], speed: 1.1 },
+      { path: [[3, 4], [3, 15], [6, 10]], speed: 1.2, name: 'Warden Sable' },
+      { path: [[28, 4], [28, 15], [26, 10]], speed: 1.2, name: 'Watcher Ivo' },
+      { path: [[12, 4], [11, 15], [14, 8]], speed: 1.25, name: 'Keeper Mirek' },
+      { path: [[19, 4], [19, 15], [21, 9]], speed: 1.1, name: 'Watcher Fenna' },
     ],
   }),
 ];

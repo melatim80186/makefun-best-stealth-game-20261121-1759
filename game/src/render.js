@@ -3,7 +3,7 @@
 // a fixed 1280x800 logical area scaled to the window.
 import { FIELD, TILE, PALETTE, FONT, TITLE, SUBTITLE, GUARD, PLAYER } from './config.js';
 import { TILE_WALL, TILE_CRATE, TILE_CASE, TILE_PLANT, TILE_SHADOW, TILE_INTEL, TILE_EXIT, tileHides } from './levels.js';
-import { GUARD_PATROL, GUARD_SUSPICIOUS, GUARD_CHASE, GUARD_SEARCH } from './guards.js';
+import { GUARD_PATROL, GUARD_SUSPICIOUS, GUARD_CHASE, GUARD_SEARCH, GUARD_INVESTIGATE } from './guards.js';
 import { castVisionRay, tileAtPixel } from './vision.js';
 
 export const SCREEN_TITLE = 'title';
@@ -20,6 +20,10 @@ export function createRenderer(canvas) {
   // override (set fresh at the top of every draw call, before anything
   // paints, so all helpers below read the wing's own floor/wall tones).
   let PAL = PALETTE;
+  // Last frame's HUD readouts, for the headless selftest (near-miss %,
+  // detection % and the strongest cone fill on screen).
+  let lastDebug = { nearMiss: false, nearMissPct: 0, detectionPct: 0, maxConeFill: 0 };
+  let maxConeFill = 0;
 
   function fitCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -47,6 +51,17 @@ export function createRenderer(canvas) {
     ctx.closePath();
     ctx.fillStyle = colour;
     ctx.fill();
+    // Cone fill: as suspicion rises the cone visibly fills in — a second
+    // pass over the same raycast shape, growing more opaque and redder, so
+    // suspicion building is seen, not just read off a colour change.
+    const fillAlpha = guard.suspicion <= 2 ? 0 : 0.10 + 0.38 * (guard.suspicion / 100);
+    if (fillAlpha > 0) {
+      maxConeFill = Math.max(maxConeFill, fillAlpha);
+      ctx.fillStyle = guard.suspicion > 60
+        ? `rgba(235, 70, 55, ${fillAlpha})`
+        : `rgba(240, 150, 60, ${fillAlpha})`;
+      ctx.fill();
+    }
   }
 
   function drawFloor(state) {
@@ -189,8 +204,22 @@ export function createRenderer(canvas) {
     ctx.fillStyle = PAL.guardDark;
     ctx.fillRect(GUARD.radius - 12, -7, 10, 14);
     ctx.restore();
-    // State mark: ? when suspicious, ! when chasing, Z when searching.
-    const mark = guard.state === GUARD_CHASE ? '!' : guard.state === GUARD_SUSPICIOUS ? '?' : guard.state === GUARD_SEARCH ? '…' : null;
+    // State mark: ? when suspicious or investigating a pebble, ! when
+    // chasing, Z when searching.
+    const mark = guard.state === GUARD_CHASE ? '!' : guard.state === GUARD_SUSPICIOUS || guard.state === GUARD_INVESTIGATE ? '?' : guard.state === GUARD_SEARCH ? '…' : null;
+    // Named label over any guard who is suspicious, chasing, searching or
+    // investigating — so a toast like "Rook glimpsed something!" points at
+    // a guard you can actually pick out on the floor.
+    if (mark) {
+      const label = guard.shortName;
+      ctx.font = 'bold 11px ' + FONT;
+      const w = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(5, 6, 10, 0.72)';
+      ctx.fillRect(guard.x - w / 2 - 4, guard.y - GUARD.radius - 46, w + 8, 15);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, guard.x, guard.y - GUARD.radius - 34);
+    }
     if (mark) {
       ctx.fillStyle = guard.state === GUARD_CHASE ? '#ff5a4a' : '#ffcf5e';
       ctx.font = 'bold 20px ' + FONT;
@@ -205,6 +234,30 @@ export function createRenderer(canvas) {
       ctx.arc(guard.x, guard.y, GUARD.radius + 6, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * guard.suspicion) / 100);
       ctx.stroke();
     }
+  }
+
+  function drawPebble(state) {
+    const pebble = state.pebble;
+    if (!pebble) return;
+    // The thrown pebble: a small stone with a dashed ring around it, so the
+    // lure reads on the floor while a guard walks over to look.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(207, 214, 228, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(pebble.x, pebble.y, 13 + Math.sin(state.totalTime * 4) * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#c8ccd4';
+    ctx.beginPath();
+    ctx.arc(pebble.x, pebble.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f2f4f8';
+    ctx.beginPath();
+    ctx.arc(pebble.x - 1.5, pebble.y - 1.5, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawPlayer(state) {
@@ -299,21 +352,51 @@ export function createRenderer(canvas) {
       ctx.textAlign = 'left';
       ctx.fillText('● HIDDEN', 772, 28);
     }
-    // Detection meter on the right.
+    // Detection meter on the right, with its numeric value on the bar.
     const meterX = 860;
-    const meterW = 300;
+    const meterW = 260;
     ctx.fillStyle = '#22262f';
     ctx.fillRect(meterX, 15, meterW, 16);
     const colour = state.alarm ? '#ff5a4a' : state.detection > 38 ? '#ff9a3d' : '#ffcf5e';
     ctx.fillStyle = colour;
     ctx.fillRect(meterX, 15, (meterW * state.detection) / 100, 16);
+    const pct = Math.round(state.detection);
+    ctx.fillStyle = pct >= 50 ? '#20242e' : '#eef1f5';
+    ctx.font = 'bold 11px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${pct}%`, meterX + meterW / 2, 27);
+    // NEAR MISS readout: the highest guard suspicion is high (40–99%) but
+    // no guard has a full lock yet — shown beside the meter, in amber.
+    const maxSuspicion = Math.max(0, ...state.guards.map((g) => g.suspicion));
+    const anyChase = state.guards.some((g) => g.state === GUARD_CHASE);
+    const nearMiss = maxSuspicion >= 40 && maxSuspicion < 100 && !anyChase && state.detection < 100;
+    if (nearMiss) {
+      ctx.fillStyle = '#ff9a3d';
+      ctx.font = 'bold 12px ' + FONT;
+      ctx.textAlign = 'left';
+      ctx.fillText(`NEAR MISS — ${Math.round(maxSuspicion)}%`, meterX + meterW + 10, 28);
+    }
+    lastDebug = { nearMiss, nearMissPct: Math.round(maxSuspicion), detectionPct: pct, maxConeFill };
     ctx.fillStyle = PAL.text;
     ctx.font = 'bold 12px ' + FONT;
     ctx.textAlign = 'left';
     ctx.fillText(state.alarm ? 'ALARM — BREAK LINE OF SIGHT!' : state.detection > 38 ? 'SUSPICIOUS — hide!' : 'UNSEEN', meterX, 45);
-    // Footer hint, in our own words: shadows and plants hide you, and the
-    // rings mark how far a loud step carries to a guard's ears.
-    const hint = 'Shadows and plants hide you. Loud steps carry — the rings show how far a guard can hear them.';
+    // Pebble stock, bottom-left: filled dots for pebbles left, hollow for spent.
+    let px = 14;
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = i < state.pebbles ? '#cfd6e4' : '#3a3f4d';
+      ctx.beginPath();
+      ctx.arc(px + 5, FIELD.height - 14, 4, 0, Math.PI * 2);
+      ctx.fill();
+      px += 12;
+    }
+    ctx.fillStyle = '#cfd6e4';
+    ctx.font = 'bold 12px ' + FONT;
+    ctx.textAlign = 'left';
+    ctx.fillText(`Pebbles ×${state.pebbles}`, px + 4, FIELD.height - 10);
+    // Footer hint, in our own words: shadows and plants hide you, the
+    // rings mark how far a loud step carries, and a pebble lures a guard.
+    const hint = 'Shadows and plants hide you. Loud steps carry — the rings show how far a guard can hear them. Q tosses a pebble to lure a guard.';
     ctx.font = '12px ' + FONT;
     const hintW = ctx.measureText(hint).width;
     ctx.fillStyle = 'rgba(10, 12, 18, 0.72)';
@@ -324,7 +407,7 @@ export function createRenderer(canvas) {
     ctx.textAlign = 'right';
     ctx.fillStyle = PAL.muted;
     ctx.font = '11px ' + FONT;
-    ctx.fillText('M mute · P pause · R retry wing', FIELD.width - 14, FIELD.height - 10);
+    ctx.fillText('Q pebble · M mute · P pause · R retry', FIELD.width - 14, FIELD.height - 10);
     ctx.textAlign = 'left';
     if (state.messageTimer > 0 && state.message) {
       ctx.fillStyle = PAL.panel;
@@ -380,9 +463,10 @@ export function createRenderer(canvas) {
     ctx.fillStyle = PAL.muted;
     ctx.fillText('Three wings. Nine relics. One very nervous curator.', FIELD.width / 2, 262);
     const lines = [
-      'WASD / arrows — move      Shift — sneak      Click — walk there',
+      'WASD / arrows — move · Shift — sneak · Click — walk there · Q / right-click — toss a pebble',
       'Stay out of the yellow cones. Shadows and plants hide you — loud steps ring out, so sneak near guards.',
       'Lift every relic, then reach the gilded EXIT unseen.',
+      'A tossed pebble lures the nearest guard over to look — slip past while they check it out.',
       'Guards get suspicious, then chase, then search — break sight to cool down.',
       '',
       'Press SPACE or click to begin',
@@ -394,13 +478,18 @@ export function createRenderer(canvas) {
     });
     ctx.fillStyle = PAL.muted;
     ctx.font = '13px ' + FONT;
-    ctx.fillText(`Best score ${best} · M mute · P pause · R retry wing`, FIELD.width / 2, 560);
+    ctx.fillText(`Best score ${best} · Q pebble · M mute · P pause · R retry wing`, FIELD.width / 2, 560);
     ctx.textAlign = 'left';
   }
 
   return {
+    /** Last frame's HUD readouts (near-miss %, detection %, cone fill). */
+    getDebug() {
+      return { ...lastDebug };
+    },
     draw(state, screen, best) {
       PAL = { ...PALETTE, ...(state.level.palette || {}) };
+      maxConeFill = 0;
       ctx.clearRect(0, 0, FIELD.width, FIELD.height);
       ctx.fillStyle = PAL.backdrop;
       ctx.fillRect(0, 0, FIELD.width, FIELD.height);
@@ -411,6 +500,7 @@ export function createRenderer(canvas) {
       drawFloor(state);
       drawIntelAndExit(state);
       drawCover(state);
+      drawPebble(state);
       for (const guard of state.guards) drawGuard(state, guard);
       drawPlayer(state);
       drawHud(state, best);

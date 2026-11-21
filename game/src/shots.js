@@ -6,9 +6,13 @@
 // v2: the cover is the Vault Wing (rooms, four cones, HIDDEN badge, sound
 // rings), the second shot is the amber Sculpture Hall, the title screen is
 // dropped — every slot shows gameplay variety.
+// v3: the cover shows the pebble lure in action — Keeper Mirek walks to the
+// "?" pebble marker while the thief sneaks past in shadow behind him, the
+// named toast and a NEAR MISS % on the meter; wing 2 shows a filled cone
+// and a named suspicious guard.
 import { TILE } from './config.js';
 import { SCREEN_TITLE, SCREEN_PLAY, SCREEN_WIN } from './render.js';
-import { GUARD_SUSPICIOUS, GUARD_CHASE } from './guards.js';
+import { GUARD_SUSPICIOUS, GUARD_CHASE, GUARD_INVESTIGATE } from './guards.js';
 
 function tileCenter(tx, ty) {
   return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
@@ -48,13 +52,21 @@ export function stageShot(name, world) {
   if (name === 'play') {
     // Cover: the Vault Wing at its densest — four rooms, four cones, the
     // thief hidden in a shadow with rings fading around them, one relic
-    // lifted, the meter half full, the gilded exit still locked.
+    // lifted, the meter half full, the gilded exit still locked — and the
+    // pebble lure in action: Keeper Mirek (guard 2) walks west to the
+    // pebble marker while the thief slips past behind him in the shadow.
+    // His "?" + name label, the toast, the NEAR MISS % and Pebbles ×2 all read.
     world.loadLevel(2);
     const state = world.state;
     placeThief(state, 18, 12, 180, true);
+    const mirek = placeGuard(state, 2, 15, 12, 180, 45, GUARD_INVESTIGATE);
+    mirek.pebbleTarget = tileCenter(12, 12);
+    mirek.investigateTimer = 2.5;
+    mirek.lastSeen = tileCenter(12, 12);
+    state.pebble = { x: 12 * TILE + TILE / 2, y: 12 * TILE + TILE / 2, t: state.totalTime - 0.4, investigator: 2 };
+    state.pebbles = 2;
     placeGuard(state, 0, 4, 8, 0, 12, GUARD_SUSPICIOUS);
     placeGuard(state, 1, 27, 8, 180, 0, 'patrol');
-    placeGuard(state, 2, 12, 8, 90, 0, 'patrol');
     placeGuard(state, 3, 20, 8, 180, 0, 'patrol');
     state.intel[0].taken = true;
     state.intelCollected = 1;
@@ -62,27 +74,28 @@ export function stageShot(name, world) {
     state.detection = 52;
     state.totalTime = 47;
     state.levelTime = 47;
-    state.message = 'Relic lifted — 1 of 4. The guard heard something…';
+    state.message = 'Keeper Mirek heard something…';
     state.messageTimer = 10;
     seedRings(state);
     return { screen: SCREEN_PLAY, best: 1240 };
   }
   if (name === 'wing2') {
     // Second shot: the amber Sculpture Hall — a different palette, the
-    // thief hidden in the big shadow by the spawn, patrols crossing.
+    // thief hidden in the big shadow by the spawn, patrols crossing, and
+    // Keeper Lova suspicious with a visibly filling cone (NEAR MISS — 55%).
     world.loadLevel(1);
     const state = world.state;
     placeThief(state, 4, 10, 0, true);
     placeGuard(state, 0, 6, 5, 90, 0, 'patrol');
     placeGuard(state, 1, 26, 5, 180, 0, 'patrol');
-    placeGuard(state, 2, 16, 11, 0, 0, 'patrol');
+    placeGuard(state, 2, 16, 11, 0, 55, GUARD_SUSPICIOUS);
     state.intel[0].taken = true;
     state.intelCollected = 1;
     state.score = 150;
     state.detection = 30;
     state.totalTime = 63;
     state.levelTime = 63;
-    state.message = 'Relic lifted — 1 of 3.';
+    state.message = 'Keeper Lova glimpsed something!';
     state.messageTimer = 10;
     seedRings(state);
     return { screen: SCREEN_PLAY, best: 1240 };

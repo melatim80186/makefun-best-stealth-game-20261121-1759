@@ -8,7 +8,7 @@
 // ?selftest=1 runs a scripted playthrough in the page and writes the result
 // to window.__selftest for headless verification.
 import { BEST_KEY, STEP } from './config.js';
-import { createWorld, stepWorld, retryLevel, EVENT_CAUGHT, EVENT_WIN, EVENT_LEVEL_CLEAR } from './world.js';
+import { createWorld, stepWorld, retryLevel, throwPebble, EVENT_CAUGHT, EVENT_WIN, EVENT_LEVEL_CLEAR } from './world.js';
 import { ACTION_CONFIRM, ACTION_PAUSE, ACTION_RESTART, ACTION_MUTE, createInput } from './input.js';
 import { createRenderer, SCREEN_CAUGHT, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 import { stageShot } from './shots.js';
@@ -117,11 +117,72 @@ async function runSelftest() {
       return world.state.detection > 30;
     }, 4000, 'detectionRises');
     if (results.detectionRises !== 'TIMEOUT') results.detectionRises = world.state.detection > 30 ? 'pass' : `FAIL det=${world.state.detection}`;
+    // Leg 4b: the glimpse must be a NAMED toast — guard 0 is Warden Rook.
+    // Keep pinning the guard while waiting: without the pin, the pause-scan
+    // wobbles his facing and the sighting breaks before suspicion reaches 38.
+    const toastOk = await waitFor(() => {
+      guard.x = gx;
+      guard.y = gy;
+      guard.facing = Math.PI / 2;
+      guard.pauseTimer = 5;
+      return world.state.message.includes('Rook');
+    }, 4000, 'namedToast');
+    if (results.namedToast !== 'TIMEOUT') results.namedToast = toastOk ? 'pass' : `FAIL msg=${world.state.message} susp=${guard.suspicion.toFixed(0)} det=${world.state.detection.toFixed(0)} state=${guard.state}`;
     // Leg 5: hide in a plant — detection must fall again.
     world.state.player.x = 3 * 40 + 20;
     world.state.player.y = 13 * 40 + 20;
     await waitFor(() => world.state.detection < 5, 8000, 'detectionDecaysInPlant');
     if (results.detectionDecaysInPlant !== 'TIMEOUT') results.detectionDecaysInPlant = world.state.detection < 5 ? 'pass' : `FAIL det=${world.state.detection}`;
+    // Leg 6: throw a pebble (Q) — the nearest guard must walk over to look.
+    // Stage it: thief at the spawn facing east, guard 0 (Warden Rook) on
+    // open floor 160 px east, facing away so he does not see the thief.
+    world.state.player.x = 2 * 40 + 20;
+    world.state.player.y = 17 * 40 + 20;
+    world.state.player.facing = 0;
+    world.state.clickTarget = null;
+    const lureGuard = world.state.guards[0];
+    lureGuard.x = 6 * 40 + 20;
+    lureGuard.y = 17 * 40 + 20;
+    lureGuard.facing = 0;
+    lureGuard.state = 'patrol';
+    lureGuard.suspicion = 0;
+    lureGuard.lastSeen = null;
+    lureGuard.pebbleTarget = null;
+    lureGuard.route = [];
+    lureGuard.routeTarget = null;
+    lureGuard.pauseTimer = 5;
+    const pebblesBefore = world.state.pebbles;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'q' }));
+    await tick(100);
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'q' }));
+    const lureOk = await waitFor(() => world.state.pebble && lureGuard.state === 'investigate', 3000, 'pebbleLure');
+    if (results.pebbleLure !== 'TIMEOUT') {
+      const toastOk = world.state.message.includes('Rook');
+      results.pebbleLure = lureOk && world.state.pebbles === pebblesBefore - 1 && toastOk
+        ? 'pass'
+        : `FAIL pebbles=${world.state.pebbles}/${pebblesBefore} guardState=${lureGuard.state} msg=${world.state.message}`;
+    }
+    // Leg 7: near-miss readout — a guard at 60% suspicion, no full lock:
+    // the HUD must report NEAR MISS with that percentage, and the cone
+    // must visibly fill (cone-fill alpha well above the calm baseline).
+    lureGuard.x = 5 * 40 + 20;
+    lureGuard.y = 1 * 40 + 20;
+    lureGuard.facing = -Math.PI / 2;
+    lureGuard.suspicion = 60;
+    lureGuard.state = 'suspicious';
+    lureGuard.lastSeen = null;
+    lureGuard.pebbleTarget = null;
+    lureGuard.route = [];
+    lureGuard.routeTarget = null;
+    world.state.detection = 65;
+    world.state.alarm = false;
+    const nearOk = await waitFor(() => renderer.getDebug().nearMiss, 2000, 'nearMissReadout');
+    if (results.nearMissReadout !== 'TIMEOUT') {
+      const dbg = renderer.getDebug();
+      results.nearMissReadout = nearOk && dbg.nearMissPct >= 40 && dbg.nearMissPct < 100 && dbg.maxConeFill > 0.25
+        ? 'pass'
+        : `FAIL debug=${JSON.stringify(dbg)}`;
+    }
     results.done = true;
   } catch (error) {
     results.error = String(error);
@@ -201,6 +262,11 @@ function runGame() {
     accumulator += Math.min((now - last) / 1000, MAX_FRAME);
     last = now;
     handleActions();
+    // A pebble throw is consumed once per frame, not per fixed step.
+    if (screen === SCREEN_PLAY) {
+      const pebble = input.takePebble();
+      if (pebble) throwPebble(world, pebble.target);
+    }
     if (screen === SCREEN_PLAY) {
       while (accumulator >= STEP && screen === SCREEN_PLAY) {
         step();

@@ -40,6 +40,17 @@ export const DETECTION = {
   searchSeconds: 6,
 };
 
+export const PEBBLE = {
+  // Pebbles per wing; a thrown pebble lures the nearest guard in earshot.
+  perWing: 3,
+  throwRange: 260,
+  hearRadius: 340,
+  // How long a guard studies the pebble before giving up and returning.
+  investigateSeconds: 2.5,
+  // A pebble marker older than this fades away, uninvestigated or not.
+  markerLifetimeSeconds: 8,
+};
+
 export const SCORE = { intel: 150, levelClear: 400, ghostBonus: 500, timeBonusPerSecond: 8 };
 
 export const PALETTE = {

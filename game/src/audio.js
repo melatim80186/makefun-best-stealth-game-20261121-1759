@@ -84,6 +84,12 @@ export function playClick() {
   tone(520, 0.06, 'sine', 0.1);
 }
 
+/** Two quick ticks when a pebble skitters across the marble. */
+export function playPebble() {
+  tone(1750, 0.06, 'triangle', 0.09);
+  setTimeout(() => tone(1150, 0.09, 'triangle', 0.07), 70);
+}
+
 /** A barely-there room tone under the title screen; off during play. */
 export function startRoomTone() {
   const ac = context();

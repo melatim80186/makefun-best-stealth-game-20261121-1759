@@ -11,6 +11,8 @@ export const GUARD_SUSPICIOUS = 'suspicious';
 export const GUARD_CHASE = 'chase';
 export const GUARD_SEARCH = 'search';
 export const GUARD_RETURN = 'return';
+// Walking over to a thrown pebble to look: "?" state, then back to patrol.
+export const GUARD_INVESTIGATE = 'investigate';
 
 function tileCenter(tx, ty) {
   return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
@@ -59,6 +61,10 @@ export function createGuard(def, index) {
   const next = def.path[1] ?? def.path[0];
   return {
     id: index,
+    // Original names from the level def (e.g. 'Warden Rook'); the short
+    // name is the label drawn over a suspicious guard.
+    name: def.name,
+    shortName: (def.name ?? '').split(' ').slice(1).join(' ') || def.name,
     x: start.x,
     y: start.y,
     facing: angleTo(start.x, start.y, next[0] * TILE + TILE / 2, next[1] * TILE + TILE / 2),
@@ -70,6 +76,9 @@ export function createGuard(def, index) {
     lastSeen: null,
     lastSeenTimer: 0,
     searchTimer: 0,
+    // Pebble investigation: where the pebble landed, how long to study it.
+    pebbleTarget: null,
+    investigateTimer: 0,
     route: [],
     routeTarget: null,
     stuckTimer: 0,
@@ -145,9 +154,11 @@ function lookAround(guard, dt) {
 
 /**
  * Advance one guard. `seen` is this guard's current sighting of the thief
- * ({x, y, strength} or null). Returns 'alarm' the moment this guard raises it.
+ * ({x, y, strength} or null). Returns 'alarm' the moment this guard raises
+ * it, 'pebbleDone' when a pebble investigation ends, or null.
  */
 export function updateGuard(grid, guard, def, seen, dt) {
+  let event = null;
   let raisedAlarm = false;
   if (seen) {
     guard.suspicion = Math.min(100, guard.suspicion + seen.strength * dt);
@@ -161,6 +172,8 @@ export function updateGuard(grid, guard, def, seen, dt) {
   if (guard.suspicion >= 100 && guard.state !== GUARD_CHASE) {
     guard.state = GUARD_CHASE;
     guard.routeTarget = null;
+    // A chasing guard forgets the pebble — the thief matters more now.
+    guard.pebbleTarget = null;
     raisedAlarm = true;
   } else if (guard.state === GUARD_CHASE && guard.lastSeenTimer > 4) {
     guard.state = GUARD_SEARCH;
@@ -204,6 +217,26 @@ export function updateGuard(grid, guard, def, seen, dt) {
       guard.state = GUARD_RETURN;
       guard.routeTarget = null;
     }
+  } else if (guard.state === GUARD_INVESTIGATE) {
+    // A thrown pebble: walk to where it landed, study it a moment ("?"),
+    // then give up and return to patrol. The world clears the pebble
+    // marker when this branch reports 'pebbleDone'.
+    if (guard.pebbleTarget) {
+      const arrived = followRoute(grid, guard, guard.pebbleTarget.x, guard.pebbleTarget.y, GUARD.investigateSpeed, dt);
+      if (arrived) {
+        lookAround(guard, dt);
+        guard.investigateTimer -= dt;
+        if (guard.investigateTimer <= 0) {
+          guard.state = GUARD_RETURN;
+          guard.pebbleTarget = null;
+          guard.routeTarget = null;
+          event = 'pebbleDone';
+        }
+      }
+    } else {
+      guard.state = GUARD_RETURN;
+      guard.routeTarget = null;
+    }
   } else if (guard.state === GUARD_CHASE) {
     const target = guard.lastSeen ?? { x: guard.x, y: guard.y };
     followRoute(grid, guard, target.x, target.y, GUARD.chaseSpeed, dt);
@@ -226,5 +259,5 @@ export function updateGuard(grid, guard, def, seen, dt) {
       guard.waypointIndex = (guard.waypointIndex + 1) % def.path.length;
     }
   }
-  return raisedAlarm ? 'alarm' : null;
+  return raisedAlarm ? 'alarm' : event;
 }

@@ -12,15 +12,15 @@ Built for the [make.fun "Make the best stealth game" competition](https://make.f
 
 Serve `game/` with any static server (or `node serve.ts`) and open http://localhost:8080.
 
-- **WASD / arrow keys** — move · **Shift** — sneak (slower, quieter, harder to spot) · **Click** — walk there
+- **WASD / arrow keys** — move · **Shift** — sneak (slower, quieter, harder to spot) · **Click** — walk there · **Q / right-click** — toss a pebble (3 per wing) to lure the nearest guard over to look
 - **P / Esc** — pause · **R** — retry the wing · **M** — mute · **Space** — start / confirm
 
 ## The game
 
 - **Three hand-designed wings** — the Marble Foyer, the Sculpture Hall and the Vault Wing — with more guards, crossing patrols and tighter routes each time. The Vault is four rooms behind staggered doors, each wing has its own palette, and every wing is winnable by patient play.
-- **Guard AI with vision cones** — cones are raycast against walls, crates and display cases, so cover genuinely blocks sight. Guards patrol waypoints (BFS navigation around furniture and through doors), pause and scan, get suspicious, chase, search the last place they saw you, then calm down and return to patrol.
-- **A detection system with a second chance** — suspicion builds while you are seen, faster up close and while walking, slower while sneaking or hiding in plants and shadows. Break line of sight and the meter cools; the alarm only sticks while a guard can still see you.
-- **Stealth depth** — plants and shadow tiles hide you (the HUD lights up HIDDEN), crates and display cases block cones, footsteps carry: walking leaves fading sound rings that show how far a step is heard, and walking near a guard turns its head, sneaking does not.
+- **Guard AI with vision cones** — cones are raycast against walls, crates and display cases, so cover genuinely blocks sight. Guards patrol waypoints (BFS navigation around furniture and through doors), pause and scan, get suspicious, chase, search the last place they saw you, then calm down and return to patrol. Every guard has a name — Warden Rook, Watcher Odile and seven more — and the toasts name the guard who glimpsed or heard you, with their name over their head while they are suspicious. A guard's cone visibly fills as their suspicion rises.
+- **A detection system with a second chance** — suspicion builds while you are seen, faster up close and while walking, slower while sneaking or hiding in plants and shadows. Break line of sight and the meter cools; the alarm only sticks while a guard can still see you. When suspicion is high but nobody has a full lock, the HUD reads NEAR MISS with the percentage, and the meter itself shows its numeric value.
+- **Stealth depth** — plants and shadow tiles hide you (the HUD lights up HIDDEN), crates and display cases block cones, footsteps carry: walking leaves fading sound rings that show how far a step is heard, and walking near a guard turns its head, sneaking does not. Toss a pebble (Q or right-click, 3 per wing) and the nearest guard in earshot walks over to investigate it — slip past while they check it out.
 - **Objectives and scoring** — lift every relic to unlock the gilded exit, then slip out. Time bonus plus a +500 ghost bonus for never being spotted.
 - **Feel** — near-miss alarm sting, footstep and pickup sounds, all synthesized live with WebAudio (no audio files), plus title, pause, caught and clean-getaway screens.
 
