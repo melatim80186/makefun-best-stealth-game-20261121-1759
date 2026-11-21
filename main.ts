@@ -1,3 +1,15 @@
+// Quiet Gallery — packaging entrypoint for the best-stealth-game-20261121-1759 contest.
+//
+// This program takes the finished game out of this repository and hands it
+// over in the shape the grader expects. It copies the whole game/ folder
+// (the museum-heist stealth game: static HTML, CSS and JavaScript that a
+// desktop browser opens without any network) and the screenshots/ folder
+// into the output directory, then writes /output/dossier.json there. That
+// dossier is produced by buildDossier from the vendored make.fun helper in
+// vendor/makefun-game.ts, and it is the summary the judge reads first.
+// Nothing here plays the game or changes it — this file only moves the
+// finished pieces into place so the submission is complete and self-contained.
+
 // A working best-game-01 entry (Node 22, standard library only): the game is this directory's
 // game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
 // modules, no library and no network request), and the program hands it in. It copies game/ and
