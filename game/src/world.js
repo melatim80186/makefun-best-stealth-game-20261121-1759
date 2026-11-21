@@ -50,6 +50,11 @@ function freshState(levelIndex) {
     detection: 0,
     alarm: false,
     alarmTimer: 0,
+    // Footstep sound rings: { t } stamps (totalTime) of recent loud steps.
+    // Only walking leaves rings — sneaking is silent. The renderer draws
+    // each as a faint expanding circle, so the player can see how far a
+    // step carries. Visual only; the rules never read this list.
+    rings: [],
     everAlerted: false,
     intelCollected: 0,
     score: 0,
@@ -97,6 +102,12 @@ function movePlayer(state, dx, dy, dt) {
       p.stepTimer = p.sneaking ? 0.55 : 0.34;
       p.stepAlternate = !p.stepAlternate;
       playFootstep(p.sneaking, p.stepAlternate);
+      if (!p.sneaking) {
+        // A loud step rings out: keep the last few, drop the faded ones.
+        state.rings.push({ t: state.totalTime });
+        while (state.rings.length > 0 && state.totalTime - state.rings[0].t > 1) state.rings.shift();
+        if (state.rings.length > 4) state.rings.shift();
+      }
     }
   } else {
     p.moving = false;

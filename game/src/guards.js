@@ -177,9 +177,13 @@ export function updateGuard(grid, guard, def, seen, dt) {
       guard.pauseTimer -= dt;
       lookAround(guard, dt);
     } else {
+      // Patrol on the same BFS routes as chase/search/return: a straight
+      // walk toward the waypoint strands a guard against any wall column
+      // between the two (v1 guards never advanced a waypoint in 90 s).
+      // BFS bends the route through door gaps and around furniture.
       const wp = def.path[guard.waypointIndex];
       const target = tileCenter(wp[0], wp[1]);
-      if (moveToward(grid, guard, target.x, target.y, patrolSpeed, dt)) {
+      if (followRoute(grid, guard, target.x, target.y, patrolSpeed, dt)) {
         guard.waypointIndex = (guard.waypointIndex + 1) % def.path.length;
         guard.pauseTimer = guard.pause;
         guard.scanTimer = 0;

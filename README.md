@@ -17,10 +17,10 @@ Serve `game/` with any static server (or `node serve.ts`) and open http://localh
 
 ## The game
 
-- **Three hand-designed wings** — the Marble Foyer, the Sculpture Hall and the Vault Wing — with more guards, crossing patrols and tighter routes each time.
-- **Guard AI with vision cones** — cones are raycast against walls, crates and display cases, so cover genuinely blocks sight. Guards patrol waypoints (BFS navigation around furniture), pause and scan, get suspicious, chase, search the last place they saw you, then calm down and return to patrol.
+- **Three hand-designed wings** — the Marble Foyer, the Sculpture Hall and the Vault Wing — with more guards, crossing patrols and tighter routes each time. The Vault is four rooms behind staggered doors, each wing has its own palette, and every wing is winnable by patient play.
+- **Guard AI with vision cones** — cones are raycast against walls, crates and display cases, so cover genuinely blocks sight. Guards patrol waypoints (BFS navigation around furniture and through doors), pause and scan, get suspicious, chase, search the last place they saw you, then calm down and return to patrol.
 - **A detection system with a second chance** — suspicion builds while you are seen, faster up close and while walking, slower while sneaking or hiding in plants and shadows. Break line of sight and the meter cools; the alarm only sticks while a guard can still see you.
-- **Stealth depth** — plants and shadow tiles hide you, crates and display cases block cones, footsteps carry: walking near a guard turns its head, sneaking does not.
+- **Stealth depth** — plants and shadow tiles hide you (the HUD lights up HIDDEN), crates and display cases block cones, footsteps carry: walking leaves fading sound rings that show how far a step is heard, and walking near a guard turns its head, sneaking does not.
 - **Objectives and scoring** — lift every relic to unlock the gilded exit, then slip out. Time bonus plus a +500 ghost bonus for never being spotted.
 - **Feel** — near-miss alarm sting, footstep and pickup sounds, all synthesized live with WebAudio (no audio files), plus title, pause, caught and clean-getaway screens.
 
